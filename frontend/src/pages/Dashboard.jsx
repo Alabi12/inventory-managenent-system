@@ -10,10 +10,12 @@ import CategoryDistribution from '../components/Dashboard/CategoryDistribution';
 import TopSellingProducts from '../components/Dashboard/TopSellingProducts';
 
 const Dashboard = () => {
-  const { stats, loading, error, refreshData } = useDashboard();
+  // Get the refresh function from useDashboard hook
+  const { stats, loading, error, fetchDashboardData } = useDashboard();
   const [activeTab, setActiveTab] = useState('overview');
   const [timeRange, setTimeRange] = useState('7days');
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const navigate = useNavigate();
 
   // Update last updated timestamp periodically
@@ -24,6 +26,31 @@ const Dashboard = () => {
 
     return () => clearInterval(interval);
   }, []);
+
+  // Create a refreshData function that properly calls the hook's fetch function
+  const refreshData = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchDashboardData(timeRange);
+    } catch (err) {
+      console.error('Error refreshing data:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Handle time range change
+  const handleTimeRangeChange = async (newRange) => {
+    setTimeRange(newRange);
+    setIsRefreshing(true);
+    try {
+      await fetchDashboardData(newRange);
+    } catch (err) {
+      console.error('Error fetching data for time range:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Calculate real-time stats
   const realTimeStats = useMemo(() => {
@@ -98,37 +125,54 @@ const Dashboard = () => {
       description: 'Create new product entry',
       icon: '➕',
       action: '/inventory/new',
-      color: 'bg-blue-100 text-blue-700'
+      color: 'bg-blue-100 text-blue-700 hover:bg-blue-200'
     },
     {
       title: 'Stock In',
       description: 'Record incoming stock',
       icon: '📥',
       action: '/transactions?type=in',
-      color: 'bg-green-100 text-green-700'
+      color: 'bg-green-100 text-green-700 hover:bg-green-200'
     },
     {
       title: 'Stock Out',
       description: 'Record outgoing stock',
       icon: '📤',
       action: '/transactions?type=out',
-      color: 'bg-red-100 text-red-700'
+      color: 'bg-red-100 text-red-700 hover:bg-red-200'
     },
     {
       title: 'Generate Report',
       description: 'Create inventory report',
       icon: '📄',
       action: '/reports',
-      color: 'bg-purple-100 text-purple-700'
+      color: 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+    },
+    {
+      title: 'Manage Categories',
+      description: 'Add or edit categories',
+      icon: '🏷️',
+      action: '/categories',
+      color: 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+    },
+    {
+      title: 'Settings',
+      description: 'System configuration',
+      icon: '⚙️',
+      action: '/settings',
+      color: 'bg-gray-100 text-gray-700 hover:bg-gray-200'
     }
   ];
 
-  const handleTimeRangeChange = (newRange) => {
-    setTimeRange(newRange);
-    refreshData(); // Refresh data with new time range
-  };
+  const timeRangeOptions = [
+    { value: 'today', label: 'Today' },
+    { value: '7days', label: 'Last 7 days' },
+    { value: '30days', label: 'Last 30 days' },
+    { value: '90days', label: 'Last 90 days' },
+    { value: 'custom', label: 'Custom Range' }
+  ];
 
-  if (loading) {
+  if (loading && !isRefreshing) {
     return (
       <div className="flex justify-center items-center min-h-96">
         <LoadingSpinner size="large" />
@@ -150,7 +194,7 @@ const Dashboard = () => {
           <p className="text-gray-600 mb-4">{error}</p>
           <button
             onClick={refreshData}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
           >
             Retry
           </button>
@@ -168,22 +212,34 @@ const Dashboard = () => {
           <p className="text-gray-600">Real-time inventory management dashboard</p>
         </div>
         <div className="flex items-center space-x-2 mt-4 sm:mt-0">
-          <select
-            value={timeRange}
-            onChange={(e) => handleTimeRangeChange(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="today">Today</option>
-            <option value="7days">Last 7 days</option>
-            <option value="30days">Last 30 days</option>
-            <option value="90days">Last 90 days</option>
-          </select>
+          <div className="relative">
+            <select
+              value={timeRange}
+              onChange={(e) => handleTimeRangeChange(e.target.value)}
+              className="pl-3 pr-10 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none transition-colors"
+              disabled={isRefreshing}
+            >
+              {timeRangeOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+              <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </div>
+          </div>
           <button
             onClick={refreshData}
-            className="px-3 py-2 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 text-sm flex items-center"
+            disabled={isRefreshing}
+            className={`px-3 py-2 rounded-md text-sm flex items-center transition-colors ${
+              isRefreshing 
+                ? 'bg-blue-300 text-blue-700 cursor-not-allowed' 
+                : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+            }`}
           >
-            <span className="mr-1">🔄</span>
-            Refresh
+            <span className={`mr-1 transition-transform ${isRefreshing ? 'animate-spin' : ''}`}>🔄</span>
+            {isRefreshing ? 'Refreshing...' : 'Refresh'}
           </button>
         </div>
       </div>
@@ -193,7 +249,7 @@ const Dashboard = () => {
         {statCards.map((card, index) => (
           <div 
             key={index} 
-            className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer"
+            className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-all duration-300 cursor-pointer transform hover:-translate-y-1"
             onClick={card.onClick}
           >
             <div className="flex items-start justify-between">
@@ -222,7 +278,10 @@ const Dashboard = () => {
           {/* Inventory Charts */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Inventory Value</h2>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold text-gray-900">Inventory Value</h2>
+                <span className="text-xs text-gray-500">Last updated: {lastUpdated.toLocaleTimeString()}</span>
+              </div>
               <InventoryChart data={stats.monthlyData} timeRange={timeRange} />
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -232,12 +291,12 @@ const Dashboard = () => {
           </div>
 
           {/* Recent Transactions */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-gray-900">Recent Transactions</h2>
                 <button 
-                  className="text-sm text-blue-600 font-medium hover:text-blue-800"
+                  className="text-sm text-blue-600 font-medium hover:text-blue-800 transition-colors"
                   onClick={() => handleNavigate('/transactions')}
                 >
                   View All →
@@ -245,10 +304,10 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="p-6">
-              {stats.recentTransactions.length > 0 ? (
+              {stats.recentTransactions && stats.recentTransactions.length > 0 ? (
                 <div className="space-y-4">
                   {stats.recentTransactions.map((transaction) => (
-                    <div key={transaction.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div key={transaction.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                       <div className="flex items-center space-x-3">
                         <div className={`p-2 rounded-full ${
                           transaction.type === 'in' ? 'bg-green-100' : 'bg-red-100'
@@ -296,7 +355,22 @@ const Dashboard = () => {
         {/* Right Column - Quick Actions & Alerts */}
         <div className="space-y-6">
           {/* Quick Actions */}
-          <QuickActions actions={quickActions} />
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
+            <div className="grid grid-cols-2 gap-3">
+              {quickActions.map((action, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleNavigate(action.action)}
+                  className={`p-3 rounded-lg text-center transition-all duration-300 transform hover:-translate-y-0.5 hover:shadow-md ${action.color}`}
+                >
+                  <div className="text-lg mb-1">{action.icon}</div>
+                  <div className="text-xs font-medium truncate">{action.title}</div>
+                  <div className="text-xs opacity-70 mt-1 truncate">{action.description}</div>
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Low Stock Alerts */}
           {realTimeStats.lowStockItems > 0 && (
@@ -340,7 +414,7 @@ const Dashboard = () => {
               </div>
               <div className="pt-3 border-t border-gray-100">
                 <button 
-                  className="w-full text-center text-sm text-blue-600 font-medium hover:text-blue-800"
+                  className="w-full text-center text-sm text-blue-600 font-medium hover:text-blue-800 transition-colors"
                   onClick={() => handleNavigate('/settings')}
                 >
                   System Settings →
