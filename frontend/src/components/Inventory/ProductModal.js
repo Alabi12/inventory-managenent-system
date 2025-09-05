@@ -1,305 +1,217 @@
-import React, { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { X, Upload, Camera } from 'lucide-react';
-import { validateProduct } from '../../utils/validators';
+import React, { useState } from 'react';
+import { X, Plus, Check, Trash2, AlertCircle, BarChart3, Upload } from 'lucide-react';
+import { inventoryAPI } from '../../api/inventoryService';
+import ProductModal from './ProductModal'; // Import the ProductModal
 
-const ProductModal = ({ product, isOpen, onClose, onSubmit, loading }) => {
-  const [imagePreview, setImagePreview] = useState(null);
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    reset,
-    setValue,
-    watch,
-  } = useForm();
+const InventoryModals = ({
+  showAddModal,
+  setShowAddModal,
+  showEditModal,
+  setShowEditModal,
+  showDeleteModal,
+  setShowDeleteModal,
+  showDetailModal,
+  setShowDetailModal,
+  selectedProduct,
+  setSelectedProduct,
+  confirmDelete,
+  products,
+  setProducts,
+  onError,
+  onSuccess,
+  fetchProducts
+}) => {
+  const [loading, setLoading] = useState(false);
 
-  const watchedImage = watch('image');
-
-  useEffect(() => {
-    if (product) {
-      // Edit mode - populate form with product data
-      reset({
-        name: product.name,
-        sku: product.sku,
-        description: product.description,
-        category: product.category,
-        price: product.price,
-        quantity: product.quantity,
-        min_stock_level: product.min_stock_level,
-        unit: product.unit,
-        image: product.image,
-      });
-      setImagePreview(product.image);
-    } else {
-      // Add mode - reset form
-      reset({
-        name: '',
-        sku: '',
-        description: '',
-        category: '',
-        price: '',
-        quantity: '',
-        min_stock_level: '',
-        unit: 'pcs',
-        image: '',
-      });
-      setImagePreview(null);
+  // Handle product form submission
+  const handleProductSubmit = async (productData) => {
+    try {
+      setLoading(true);
+      
+      if (selectedProduct) {
+        // Update existing product
+        await inventoryAPI.updateProduct(selectedProduct.id, productData);
+        if (onSuccess) onSuccess('Product updated successfully');
+      } else {
+        // Create new product
+        await inventoryAPI.createProduct(productData);
+        if (onSuccess) onSuccess('Product created successfully');
+      }
+      
+      // Refresh products list
+      await fetchProducts();
+      
+      // Close modal
+      if (selectedProduct) {
+        setShowEditModal(false);
+      } else {
+        setShowAddModal(false);
+      }
+      
+      setSelectedProduct(null);
+    } catch (error) {
+      console.error('Error saving product:', error);
+      if (onError) onError(error.response?.data?.message || 'Failed to save product');
+    } finally {
+      setLoading(false);
     }
-  }, [product, reset, isOpen]);
+  };
 
-  const handleFormSubmit = (data) => {
-    const validation = validateProduct(data);
-    if (!validation.isValid) {
-      // Handle validation errors
-      return;
-    }
-
-    const productData = {
-      ...data,
-      price: parseFloat(data.price),
-      quantity: parseInt(data.quantity),
-      min_stock_level: parseInt(data.min_stock_level),
+  const getStatusBadge = (status) => {
+    const statusConfig = {
+      in_stock: { color: 'bg-green-100 text-green-800', text: 'In Stock' },
+      low_stock: { color: 'bg-yellow-100 text-yellow-800', text: 'Low Stock' },
+      out_of_stock: { color: 'bg-red-100 text-red-800', text: 'Out of Stock' }
     };
-
-    onSubmit(productData);
+    
+    const config = statusConfig[status] || statusConfig.in_stock;
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
+        {config.text}
+      </span>
+    );
   };
-
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result);
-        setValue('image', reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const removeImage = () => {
-    setImagePreview(null);
-    setValue('image', '');
-  };
-
-  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div className="relative top-20 mx-auto p-4 border w-full max-w-2xl shadow-lg rounded-md bg-white">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="text-lg font-semibold">
-            {product ? 'Edit Product' : 'Add New Product'}
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+    <>
+      {/* Add/Edit Product Modal */}
+      <ProductModal
+        product={selectedProduct}
+        isOpen={showAddModal || showEditModal}
+        onClose={() => {
+          if (selectedProduct) {
+            setShowEditModal(false);
+          } else {
+            setShowAddModal(false);
+          }
+          setSelectedProduct(null);
+        }}
+        onSubmit={handleProductSubmit}
+        loading={loading}
+      />
 
-        <form onSubmit={handleSubmit(handleFormSubmit)} className="p-4 space-y-4">
-          {/* Image Upload */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Product Image
-            </label>
-            <div className="flex items-center space-x-4">
-              <div className="flex-shrink-0">
-                {imagePreview ? (
-                  <div className="relative">
-                    <img
-                      src={imagePreview}
-                      alt="Preview"
-                      className="h-20 w-20 rounded-md object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={removeImage}
-                      className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="h-20 w-20 border-2 border-dashed border-gray-300 rounded-md flex items-center justify-center">
-                    <Camera className="h-8 w-8 text-gray-400" />
-                  </div>
-                )}
-              </div>
-              <div>
-                <label className="cursor-pointer">
-                  <span className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    <Upload className="h-4 w-4 mr-2" />
-                    Upload Image
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageChange}
-                    className="hidden"
-                  />
-                </label>
-                <p className="text-xs text-gray-500 mt-1">
-                  PNG, JPG up to 2MB
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && selectedProduct && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50">
+          <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-xl font-semibold text-gray-900">Confirm Delete</h3>
+              <button
+                type="button"
+                className="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center transition-colors duration-200"
+                onClick={() => setShowDeleteModal(false)}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="flex items-center mb-4">
+                <AlertCircle className="h-6 w-6 text-red-600 mr-2" />
+                <p className="text-gray-700">
+                  Are you sure you want to delete <strong>{selectedProduct.name}</strong>? This action cannot be undone.
                 </p>
               </div>
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200"
+                  onClick={() => setShowDeleteModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200"
+                  onClick={() => confirmDelete(selectedProduct.id)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
+        </div>
+      )}
 
-          {/* Basic Information */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Product Name *
-              </label>
-              <input
-                type="text"
-                {...register('name', { required: 'Product name is required' })}
-                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-              />
-              {errors.name && (
-                <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                SKU *
-              </label>
-              <input
-                type="text"
-                {...register('sku', { required: 'SKU is required' })}
-                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-              />
-              {errors.sku && (
-                <p className="mt-1 text-sm text-red-600">{errors.sku.message}</p>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Description
-            </label>
-            <textarea
-              rows={3}
-              {...register('description')}
-              className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Category
-              </label>
-              <input
-                type="text"
-                {...register('category')}
-                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Unit
-              </label>
-              <select
-                {...register('unit')}
-                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+      {/* Product Detail Modal */}
+      {showDetailModal && selectedProduct && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50">
+          <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-xl font-semibold text-gray-900">Product Details</h3>
+              <button
+                type="button"
+                className="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center transition-colors duration-200"
+                onClick={() => setShowDetailModal(false)}
               >
-                <option value="pcs">Pieces</option>
-                <option value="kg">Kilograms</option>
-                <option value="g">Grams</option>
-                <option value="l">Liters</option>
-                <option value="ml">Milliliters</option>
-                <option value="m">Meters</option>
-                <option value="cm">Centimeters</option>
-              </select>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="flex flex-col md:flex-row gap-6">
+                <div className="w-full md:w-1/3">
+                  <div className="h-48 w-full bg-gray-100 rounded-lg flex items-center justify-center">
+                    {selectedProduct.image ? (
+                      <img src={selectedProduct.image} alt={selectedProduct.name} className="h-full w-full object-cover rounded-lg" />
+                    ) : (
+                      <BarChart3 className="h-16 w-16 text-gray-400" />
+                    )}
+                  </div>
+                </div>
+                <div className="w-full md:w-2/3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-500">Product Name</h4>
+                      <p className="text-lg font-semibold text-gray-900">{selectedProduct.name}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-500">SKU</h4>
+                      <p className="text-lg font-semibold text-gray-900">{selectedProduct.sku}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-500">Category</h4>
+                      <p className="text-lg font-semibold text-gray-900">{selectedProduct.category}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-500">Price</h4>
+                      <p className="text-lg font-semibold text-gray-900">${selectedProduct.price}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-500">Quantity</h4>
+                      <p className="text-lg font-semibold text-gray-900">{selectedProduct.quantity}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-500">Minimum Stock Level</h4>
+                      <p className="text-lg font-semibold text-gray-900">{selectedProduct.min_stock_level}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-500">Status</h4>
+                      {getStatusBadge(selectedProduct.status)}
+                    </div>
+                  </div>
+                  {selectedProduct.description && (
+                    <div className="mt-4">
+                      <h4 className="text-sm font-medium text-gray-500">Description</h4>
+                      <p className="text-gray-700 mt-1">{selectedProduct.description}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex justify-end pt-4 border-t border-gray-200 mt-4">
+                <button
+                  type="button"
+                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200"
+                  onClick={() => setShowDetailModal(false)}
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
-
-          {/* Pricing and Stock */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Price *
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                {...register('price', {
-                  required: 'Price is required',
-                  min: { value: 0, message: 'Price must be positive' },
-                })}
-                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-              />
-              {errors.price && (
-                <p className="mt-1 text-sm text-red-600">{errors.price.message}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Quantity *
-              </label>
-              <input
-                type="number"
-                min="0"
-                {...register('quantity', {
-                  required: 'Quantity is required',
-                  min: { value: 0, message: 'Quantity cannot be negative' },
-                })}
-                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-              />
-              {errors.quantity && (
-                <p className="mt-1 text-sm text-red-600">{errors.quantity.message}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Minimum Stock Level *
-              </label>
-              <input
-                type="number"
-                min="0"
-                {...register('min_stock_level', {
-                  required: 'Minimum stock level is required',
-                  min: { value: 0, message: 'Cannot be negative' },
-                })}
-                className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-              />
-              {errors.min_stock_level && (
-                <p className="mt-1 text-sm text-red-600">{errors.min_stock_level.message}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end space-x-3 pt-4 border-t">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50"
-            >
-              {loading ? 'Saving...' : product ? 'Update Product' : 'Add Product'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        </div>
+      )}
+    </>
   );
 };
 
-export default ProductModal;
+export default InventoryModals;

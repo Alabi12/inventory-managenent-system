@@ -1,0 +1,52 @@
+{
+  "products": [
+    {
+      "id": 1,
+      "name": "Computer",
+      "sku": "COM001",
+      "category": "Electronics",
+      "quantity": 30,
+      "min_stock_level": 10,
+      "price": 2000.0,
+      "description": "Bought from AEK electronics 2344",
+      "status": "in_stock",
+      "last_updated": "2025-09-05T20:32:14.821257",
+      "image": "/uploads/product_COM001_eea59a53948b4d60b4f047072fafdf51.jpg"
+    },
+    {
+      "id": 2,
+      "name": "Computer 2",
+      "sku": "COM002",
+      "category": "Electronics",
+      "quantity": 40,
+      "min_stock_level": 10,
+      "price": 3000.0,
+      "description": "",
+      "status": "in_stock",
+      "last_updated": "2025-09-05T20:31:53.129646",
+      "image": "/uploads/product_COM002_78911b0a3bd64a7c93f253568df31467.jpg"
+    },
+    {
+      "id": 3,
+      "name": "Computer 3",
+      "sku": "COM003",
+      "category": "Electronics",
+      "quantity": 10,
+      "min_stock_level": 20,
+      "price": 3000.0,
+      "description": "",
+      "status": "low_stock",
+      "last_updated": "2025-09-05T20:36:34.498339",
+      "image": "/uploads/product_COM003_af479d20f01d40bebcac43fc38203a03.jpg"
+    }
+  ],
+  "users": [
+    {
+      "id": 1,
+      "email": "demo@inventory.com",
+      "password": "scrypt:32768:8:1$KN2fz7wiJcai1ck3$94e09d7de04ac260d28f0ed181d0787fe8ebd716d71d98675526ac43b58cb0a3cb931d106a519a580538c6e22e0c5ca56149dabdb149592cd071dfa3c374980d",
+      "name": "Demo User",
+      "role": "admin"
+    }
+  ]
+}
