@@ -1,12 +1,16 @@
-import React, { useState, useMemo } from 'react';
+      
+ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Download, Upload, Filter, FileText, BarChart3, 
   AlertTriangle, TrendingUp, Calendar, RefreshCw,
   ChevronDown, Printer, FileSpreadsheet, FileType,
   ChevronRight, Database, PieChart, Layers,
-  Search, X, Save, FileUp
+  Search, X, Save, FileUp, AlertCircle
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../utils/formatters';
+import { useAuth } from '../contexts/AuthContext';
+import LoadingSpinner from '../components/Common/LoadingSpinner';
+import { productsAPI, transactionsAPI } from '../services/api'; // Import your API functions
 
 const Reports = () => {
   const [selectedReport, setSelectedReport] = useState('inventory');
@@ -23,6 +27,10 @@ const Reports = () => {
     transactionType: 'all'
   });
   const [searchQuery, setSearchQuery] = useState('');
+  const [reportData, setReportData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [stats, setStats] = useState({});
 
   const reportTypes = [
     { 
@@ -55,148 +63,263 @@ const Reports = () => {
     },
   ];
 
-  // Sample data
-  const sampleProducts = [
-    { id: 1, name: 'MacBook Pro 16"', sku: 'MBP16-001', category: 'Electronics', quantity: 45, min_stock: 10, price: 2499, value: 112455 },
-    { id: 2, name: 'iPhone 15 Pro', sku: 'IP15P-002', category: 'Electronics', quantity: 8, min_stock: 15, price: 999, value: 7992 },
-    { id: 3, name: 'AirPods Pro', sku: 'APP-003', category: 'Audio', quantity: 28, min_stock: 20, price: 249, value: 6972 },
-    { id: 4, name: 'iPad Air', sku: 'IPA-004', category: 'Tablets', quantity: 18, min_stock: 10, price: 599, value: 10782 },
-    { id: 5, name: 'Apple Watch Series 9', sku: 'AWS9-005', category: 'Wearables', quantity: 22, min_stock: 15, price: 399, value: 8778 },
-    { id: 6, name: 'Magic Keyboard', sku: 'MK-006', category: 'Accessories', quantity: 5, min_stock: 8, price: 199, value: 995 },
-    { id: 7, name: 'Magic Mouse', sku: 'MM-007', category: 'Accessories', quantity: 3, min_stock: 5, price: 99, value: 297 },
-  ];
-
-  const sampleTransactions = [
-    { id: 1, date: '2024-01-15', product: 'MacBook Pro 16"', type: 'in', quantity: 20, user: 'Admin', value: 49980 },
-    { id: 2, date: '2024-01-14', product: 'iPhone 15 Pro', type: 'out', quantity: 5, user: 'Staff', value: 4995 },
-    { id: 3, date: '2024-01-13', product: 'AirPods Pro', type: 'in', quantity: 25, user: 'Admin', value: 6225 },
-    { id: 4, date: '2024-01-12', product: 'iPad Air', type: 'out', quantity: 2, user: 'Staff', value: 1198 },
-    { id: 5, date: '2024-01-11', product: 'Apple Watch Series 9', type: 'in', quantity: 15, user: 'Admin', value: 5985 },
-  ];
-
-  const filteredData = useMemo(() => {
-    let data = [];
-    
-    switch (selectedReport) {
-      case 'inventory':
-        data = sampleProducts.filter(product => {
-          const matchesCategory = !filters.category || product.category === filters.category;
-          const matchesSearch = !searchQuery || 
-            product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            product.sku.toLowerCase().includes(searchQuery.toLowerCase());
-          return matchesCategory && matchesSearch;
-        });
-        break;
-        
-      case 'transactions':
-        data = sampleTransactions.filter(transaction => {
-          const matchesDate = (!dateRange.start || transaction.date >= dateRange.start) &&
-                            (!dateRange.end || transaction.date <= dateRange.end);
-          const matchesType = filters.transactionType === 'all' || transaction.type === filters.transactionType;
-          const matchesSearch = !searchQuery || 
-            transaction.product.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            transaction.user.toLowerCase().includes(searchQuery.toLowerCase());
-          return matchesDate && matchesType && matchesSearch;
-        });
-        break;
-        
-      case 'low-stock':
-        data = sampleProducts.filter(product => 
-          product.quantity <= (filters.lowStockThreshold || product.min_stock)
-        ).filter(product => 
-          !searchQuery || 
-          product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          product.sku.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-        break;
-        
-      case 'sales':
-        data = sampleTransactions.filter(transaction => 
-          transaction.type === 'out' &&
-          (!dateRange.start || transaction.date >= dateRange.start) &&
-          (!dateRange.end || transaction.date <= dateRange.end) &&
-          (!searchQuery || transaction.product.toLowerCase().includes(searchQuery.toLowerCase()))
-        );
-        break;
-        
-      default:
-        data = [];
+  // API fetch functions using your API service
+  const fetchInventoryData = useCallback(async () => {
+    try {
+      const response = await productsAPI.getProducts();
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching inventory data:', error);
+      throw new Error('Failed to fetch inventory data. Please check your connection.');
     }
-    
-    return data;
-  }, [selectedReport, dateRange, filters, searchQuery]);
+  }, []);
 
-  const reportStats = useMemo(() => {
-    switch (selectedReport) {
-      case 'inventory':
-        return {
-          totalItems: sampleProducts.length,
-          totalValue: sampleProducts.reduce((sum, product) => sum + product.value, 0),
-          lowStockItems: sampleProducts.filter(p => p.quantity <= p.min_stock).length
-        };
-        
-      case 'transactions':
-        return {
-          totalTransactions: filteredData.length,
-          stockIns: filteredData.filter(t => t.type === 'in').length,
-          stockOuts: filteredData.filter(t => t.type === 'out').length
-        };
-        
-      case 'low-stock':
-        return {
-          criticalItems: filteredData.filter(p => p.quantity <= 5).length,
-          warningItems: filteredData.filter(p => p.quantity > 5 && p.quantity <= p.min_stock).length,
-          totalValue: filteredData.reduce((sum, product) => sum + product.value, 0)
-        };
-        
-      case 'sales':
-        return {
-          totalSales: filteredData.length,
-          totalRevenue: filteredData.reduce((sum, transaction) => sum + transaction.value, 0),
-          averageSale: filteredData.length > 0 ? 
-            filteredData.reduce((sum, transaction) => sum + transaction.value, 0) / filteredData.length : 0
-        };
-        
-      default:
-        return {};
+  const fetchTransactionsData = useCallback(async () => {
+    try {
+      const params = {};
+      
+      if (dateRange.start) params.start_date = dateRange.start;
+      if (dateRange.end) params.end_date = dateRange.end;
+      if (filters.transactionType !== 'all') params.type = filters.transactionType;
+      
+      const response = await transactionsAPI.getTransactions(params);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching transactions data:', error);
+      throw new Error('Failed to fetch transactions data. Please check your connection.');
     }
-  }, [selectedReport, filteredData]);
+  }, [dateRange, filters.transactionType]);
+
+  const fetchTransactionStats = useCallback(async () => {
+    try {
+      const response = await transactionsAPI.getTransactionStats();
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching transaction stats:', error);
+      throw new Error('Failed to fetch transaction statistics.');
+    }
+  }, []);
+
+  // Mock data fallback for development
+  const getMockData = useCallback((reportType) => {
+    switch (reportType) {
+      case 'inventory':
+        return [
+          { id: 1, name: 'Product A', sku: 'SKU001', category: 'Electronics', quantity: 15, min_stock_level: 10, price: 99.99 },
+          { id: 2, name: 'Product B', sku: 'SKU002', category: 'Books', quantity: 5, min_stock_level: 8, price: 24.99 },
+          { id: 3, name: 'Product C', sku: 'SKU003', category: 'Electronics', quantity: 0, min_stock_level: 5, price: 149.99 }
+        ];
+      case 'transactions':
+        return [
+          { id: 1, date: new Date(), product_name: 'Product A', type: 'incoming', quantity: 10, previous_stock: 5, new_stock: 15, amount: 999.90, created_by: 'admin' },
+          { id: 2, date: new Date(), product_name: 'Product B', type: 'outgoing', quantity: 3, previous_stock: 8, new_stock: 5, amount: 74.97, created_by: 'user' }
+        ];
+      case 'low-stock':
+        return [
+          { id: 2, name: 'Product B', sku: 'SKU002', category: 'Books', quantity: 5, min_stock_level: 8, price: 24.99 },
+          { id: 4, name: 'Product D', sku: 'SKU004', category: 'Office', quantity: 2, min_stock_level: 10, price: 12.50 }
+        ];
+      case 'sales':
+        return [
+          { id: 2, date: new Date(), product_name: 'Product B', type: 'outgoing', quantity: 3, previous_stock: 8, new_stock: 5, amount: 74.97, created_by: 'user' }
+        ];
+      default:
+        return [];
+    }
+  }, []);
+
+  // Load report data with fallback to mock data
+  const loadReportData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      let data = [];
+      let statsData = {};
+      
+      // Try to fetch real data first, fall back to mock data if it fails
+      try {
+        switch (selectedReport) {
+          case 'inventory':
+            data = await fetchInventoryData();
+            statsData = {
+              totalItems: data.length,
+              totalValue: data.reduce((sum, product) => sum + (product.price * product.quantity), 0),
+              lowStockItems: data.filter(p => p.quantity <= p.min_stock_level && p.quantity > 0).length,
+              outOfStockItems: data.filter(p => p.quantity === 0).length
+            };
+            break;
+            
+          case 'transactions':
+            data = await fetchTransactionsData();
+            statsData = {
+              totalTransactions: data.length,
+              stockIns: data.filter(t => t.type === 'incoming').length,
+              stockOuts: data.filter(t => t.type === 'outgoing').length,
+              adjustments: data.filter(t => t.type === 'adjustment').length
+            };
+            break;
+            
+          case 'low-stock':
+            const inventoryData = await fetchInventoryData();
+            data = inventoryData.filter(product => 
+              product.quantity <= (filters.lowStockThreshold || product.min_stock_level)
+            );
+            statsData = {
+              criticalItems: data.filter(p => p.quantity <= 5).length,
+              warningItems: data.filter(p => p.quantity > 5 && p.quantity <= p.min_stock_level).length,
+              totalValue: data.reduce((sum, product) => sum + (product.price * product.quantity), 0)
+            };
+            break;
+            
+          case 'sales':
+            const transactions = await fetchTransactionsData();
+            data = transactions.filter(t => t.type === 'outgoing');
+            statsData = await fetchTransactionStats();
+            break;
+            
+          default:
+            data = [];
+        }
+      } catch (apiError) {
+        console.warn('API fetch failed, using mock data:', apiError);
+        data = getMockData(selectedReport);
+        
+        // Generate mock stats based on mock data
+        switch (selectedReport) {
+          case 'inventory':
+            statsData = {
+              totalItems: data.length,
+              totalValue: data.reduce((sum, product) => sum + (product.price * product.quantity), 0),
+              lowStockItems: data.filter(p => p.quantity <= p.min_stock_level && p.quantity > 0).length,
+              outOfStockItems: data.filter(p => p.quantity === 0).length
+            };
+            break;
+          case 'transactions':
+            statsData = {
+              totalTransactions: data.length,
+              stockIns: data.filter(t => t.type === 'incoming').length,
+              stockOuts: data.filter(t => t.type === 'outgoing').length,
+              adjustments: data.filter(t => t.type === 'adjustment').length
+            };
+            break;
+          case 'low-stock':
+            statsData = {
+              criticalItems: data.filter(p => p.quantity <= 5).length,
+              warningItems: data.filter(p => p.quantity > 5 && p.quantity <= p.min_stock_level).length,
+              totalValue: data.reduce((sum, product) => sum + (product.price * product.quantity), 0)
+            };
+            break;
+          case 'sales':
+            statsData = {
+              totalSales: data.length,
+              totalRevenue: data.reduce((sum, sale) => sum + sale.amount, 0)
+            };
+            break;
+        }
+      }
+      
+      // Apply search filter
+      if (searchQuery) {
+        data = data.filter(item => {
+          if (selectedReport === 'inventory' || selectedReport === 'low-stock') {
+            return item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                   (item.sku && item.sku.toLowerCase().includes(searchQuery.toLowerCase()));
+          } else if (selectedReport === 'transactions' || selectedReport === 'sales') {
+            return item.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                   (item.product_sku && item.product_sku.toLowerCase().includes(searchQuery.toLowerCase()));
+          }
+          return true;
+        });
+      }
+      
+      // Apply category filter for inventory reports
+      if (selectedReport === 'inventory' && filters.category) {
+        data = data.filter(item => item.category === filters.category);
+      }
+      
+      setReportData(data);
+      setStats(statsData);
+    } catch (error) {
+      setError(error.message);
+      console.error('Error loading report data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    selectedReport, 
+    searchQuery, 
+    filters.category, 
+    filters.lowStockThreshold, 
+    fetchInventoryData, 
+    fetchTransactionsData, 
+    fetchTransactionStats,
+    getMockData
+  ]);
+
+  // Load data when report type or filters change
+  useEffect(() => {
+    loadReportData();
+  }, [selectedReport, dateRange, filters, searchQuery, loadReportData]);
 
   const handleGenerateReport = async () => {
     setIsGenerating(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await loadReportData();
     setIsGenerating(false);
   };
 
-  const handleExport = (format) => {
+  const handleExport = async (format) => {
     setExportFormat(format);
     setIsGenerating(true);
     
-    setTimeout(() => {
-      const dataStr = JSON.stringify(filteredData, null, 2);
-      const dataUri = format === 'csv' 
-        ? 'data:text/csv;charset=utf-8,' + encodeURIComponent(convertToCSV(filteredData))
-        : 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+    try {
+      let response;
       
-      const exportFileDefaultName = `${selectedReport}_report_${new Date().toISOString().split('T')[0]}.${format}`;
+      // Use the appropriate API based on selected report
+      if (selectedReport === 'inventory' || selectedReport === 'low-stock') {
+        response = await productsAPI.exportProducts(format);
+      } else if (selectedReport === 'transactions' || selectedReport === 'sales') {
+        response = await transactionsAPI.exportTransactions(format);
+      } else {
+        throw new Error('Unsupported report type for export');
+      }
       
-      const linkElement = document.createElement('a');
-      linkElement.setAttribute('href', dataUri);
-      linkElement.setAttribute('download', exportFileDefaultName);
-      linkElement.click();
+      // Handle file download
+      const blob = new Blob([response.data], { type: response.headers['content-type'] });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${selectedReport}_report_${new Date().toISOString().split('T')[0]}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
       
+    } catch (error) {
+      console.error('Export error:', error);
+      
+      // Fallback: create CSV from current data if API export fails
+      try {
+        const csvContent = reportData.map(item => 
+          Object.values(item).join(',')
+        ).join('\n');
+        
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${selectedReport}_report_${new Date().toISOString().split('T')[0]}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } catch (fallbackError) {
+        setError('Export failed: ' + error.message);
+      }
+    } finally {
       setIsGenerating(false);
       setShowExportMenu(false);
-    }, 1000);
-  };
-
-  const convertToCSV = (data) => {
-    if (data.length === 0) return '';
-    
-    const headers = Object.keys(data[0]);
-    const csvData = data.map(item => headers.map(header => item[header]));
-    
-    return [headers, ...csvData].map(row => row.join(',')).join('\n');
+    }
   };
 
   const handlePrint = () => {
@@ -211,182 +334,259 @@ const Reports = () => {
       transactionType: 'all'
     });
     setSearchQuery('');
-  };
+  };     
 
-  const renderReportContent = () => {
-    switch (selectedReport) {
-      case 'inventory':
-        return (
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SKU</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Min Stock</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredData.map((product) => (
-                  <tr key={product.id} className={product.quantity <= product.min_stock ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-gray-50'}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{product.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">{product.sku}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{product.category}</td>
+const renderReportContent = () => {
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center py-16">
+        <LoadingSpinner size="large" />
+        <span className="ml-3 text-gray-600">Loading report data...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-16 bg-red-50 rounded-lg border border-red-200">
+        <div className="mx-auto h-16 w-16 text-red-500 mb-4">
+          <AlertCircle className="h-16 w-16" />
+        </div>
+        <h3 className="text-lg font-medium text-red-800 mb-2">Failed to load data</h3>
+        <p className="text-red-600 mb-4">{error}</p>
+        <button
+          onClick={loadReportData}
+          className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  switch (selectedReport) {
+    case 'inventory':
+      return (
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SKU</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Min Stock</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {reportData.map((product) => {
+                const status = (product.quantity || 0) === 0 ? 'out_of_stock' : 
+                             (product.quantity || 0) <= (product.min_stock_level || 0) ? 'low_stock' : 'in_stock';
+                const value = (product.price || 0) * (product.quantity || 0);
+                
+                return (
+                  <tr key={product.id} className={status !== 'in_stock' ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-gray-50'}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{product.name || 'Unnamed Product'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">{product.sku || 'N/A'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{product.category || 'Uncategorized'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      <span className={product.quantity <= product.min_stock ? 'text-amber-700 font-semibold' : ''}>
-                        {product.quantity}
+                      <span className={status !== 'in_stock' ? 'text-amber-700 font-semibold' : ''}>
+                        {product.quantity || 0}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{product.min_stock}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{product.min_stock_level || 0}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCurrency(product.price || 0)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {formatCurrency(product.value)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-        
-      case 'transactions':
-        return (
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredData.map((transaction) => (
-                  <tr key={transaction.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {formatDate(transaction.date)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {transaction.product}
+                      {formatCurrency(value)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <span className={`inline-flex px-2.5 py-1 text-xs font-semibold rounded-full ${
-                        transaction.type === 'in' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        status === 'out_of_stock' ? 'bg-red-100 text-red-800' :
+                        status === 'low_stock' ? 'bg-amber-100 text-amber-800' :
+                        'bg-green-100 text-green-800'
                       }`}>
-                        {transaction.type.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {transaction.quantity}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {formatCurrency(transaction.value)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {transaction.user}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-        
-      case 'low-stock':
-        return (
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SKU</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Stock</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Minimum Stock</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredData.map((product) => (
-                  <tr key={product.id} className={product.quantity <= 5 ? 'bg-red-50 hover:bg-red-100' : 'bg-amber-50 hover:bg-amber-100'}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{product.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">{product.sku}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{product.category}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      <span className={product.quantity <= 5 ? 'text-red-700 font-semibold' : 'text-amber-700 font-semibold'}>
-                        {product.quantity}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{product.min_stock}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className={`inline-flex px-2.5 py-1 text-xs font-semibold rounded-full ${
-                        product.quantity <= 5 ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {product.quantity <= 5 ? 'CRITICAL' : 'WARNING'}
+                        {status === 'out_of_stock' ? 'OUT OF STOCK' :
+                         status === 'low_stock' ? 'LOW STOCK' : 'IN STOCK'}
                       </span>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-        
-      case 'sales':
-        return (
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit Price</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Revenue</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredData.map((transaction) => (
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+      
+    case 'transactions':
+      return (
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Previous Stock</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">New Stock</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {reportData.map((transaction) => {
+                // FIXED: Add safety check for transaction.type
+                const transactionType = transaction.type || 'unknown';
+                const typeClass = transactionType === 'incoming' ? 'bg-green-100 text-green-800' : 
+                                transactionType === 'outgoing' ? 'bg-red-100 text-red-800' :
+                                'bg-blue-100 text-blue-800';
+                
+                return (
                   <tr key={transaction.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {formatDate(transaction.date)}
+                      {transaction.date ? formatDate(transaction.date) : 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {transaction.product}
+                      {transaction.product_name || 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <span className={`inline-flex px-2.5 py-1 text-xs font-semibold rounded-full ${typeClass}`}>
+                        {transactionType.toUpperCase()}
+                      </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {transaction.quantity}
+                      {transaction.quantity || 0}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      {transaction.previous_stock || 0}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatCurrency(transaction.value / transaction.quantity)}
+                      {transaction.new_stock || 0}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {formatCurrency(transaction.value)}
+                      {formatCurrency(transaction.amount || 0)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      {transaction.created_by || 'System'}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-        
-      default:
-        return (
-          <div className="text-center py-16 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-            <div className="mx-auto h-16 w-16 text-gray-400 mb-4">
-              <PieChart className="h-16 w-16" />
-            </div>
-            <h3 className="text-lg font-medium text-gray-700 mb-2">Select a report type</h3>
-            <p className="text-gray-500 max-w-md mx-auto">Choose a report from the sidebar to generate and view analytical data</p>
-          </div>
-        );
-    }
-  };
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+      
+    case 'low-stock':
+      return (
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SKU</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Min Stock</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {reportData.map((product) => {
+                const status = (product.quantity || 0) === 0 ? 'out_of_stock' : 
+                             (product.quantity || 0) <= (product.min_stock_level || 0) ? 'low_stock' : 'in_stock';
+                const value = (product.price || 0) * (product.quantity || 0);
+                
+                return (
+                  <tr key={product.id} className={status !== 'in_stock' ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-gray-50'}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{product.name || 'Unnamed Product'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">{product.sku || 'N/A'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{product.category || 'Uncategorized'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      <span className={status !== 'in_stock' ? 'text-amber-700 font-semibold' : ''}>
+                        {product.quantity || 0}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{product.min_stock_level || 0}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCurrency(product.price || 0)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {formatCurrency(value)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <span className={`inline-flex px-2.5 py-1 text-xs font-semibold rounded-full ${
+                        status === 'out_of_stock' ? 'bg-red-100 text-red-800' :
+                        status === 'low_stock' ? 'bg-amber-100 text-amber-800' :
+                        'bg-green-100 text-green-800'
+                      }`}>
+                        {status === 'out_of_stock' ? 'OUT OF STOCK' :
+                         status === 'low_stock' ? 'LOW STOCK' : 'IN STOCK'}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+      
+    case 'sales':
+      return (
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {reportData.map((sale) => (
+                <tr key={sale.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    {sale.date ? formatDate(sale.date) : 'N/A'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {sale.product_name || 'N/A'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {sale.quantity || 0}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {formatCurrency(sale.unit_price || 0)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {formatCurrency(sale.amount || 0)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    {sale.customer_name || 'N/A'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      
+    default:
+      return (
+        <div className="text-center py-16 bg-gray-50 rounded-lg border border-gray-200">
+          <FileText className="mx-auto h-16 w-16 text-gray-400 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a report type</h3>
+          <p className="text-gray-600">Choose a report type from the sidebar to view data</p>
+        </div>
+      );
+  }
+};
 
   const currentReport = reportTypes.find(r => r.id === selectedReport);
 
@@ -402,17 +602,17 @@ const Reports = () => {
           <div className="flex flex-wrap gap-2">
             <button 
               onClick={handleGenerateReport}
-              disabled={isGenerating}
+              disabled={isGenerating || loading}
               className="flex items-center px-4 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-all duration-200 disabled:opacity-50 shadow-sm"
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isGenerating ? 'animate-spin' : ''}`} />
-              {isGenerating ? 'Generating...' : 'Refresh Data'}
+              <RefreshCw className={`h-4 w-4 mr-2 ${isGenerating || loading ? 'animate-spin' : ''}`} />
+              {isGenerating || loading ? 'Generating...' : 'Refresh Data'}
             </button>
             
             <div className="relative">
               <button 
                 onClick={() => setShowExportMenu(!showExportMenu)}
-                disabled={filteredData.length === 0}
+                disabled={reportData.length === 0 || loading}
                 className="flex items-center px-4 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-all duration-200 disabled:opacity-50 shadow-sm"
               >
                 <Download className="h-4 w-4 mr-2" />
@@ -430,11 +630,11 @@ const Reports = () => {
                     Export as CSV
                   </button>
                   <button
-                    onClick={() => handleExport('json')}
+                    onClick={() => handleExport('excel')}
                     className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150"
                   >
                     <FileType className="h-4 w-4 mr-2 text-indigo-500" />
-                    Export as JSON
+                    Export as Excel
                   </button>
                 </div>
               )}
@@ -442,7 +642,7 @@ const Reports = () => {
             
             <button 
               onClick={handlePrint}
-              disabled={filteredData.length === 0}
+              disabled={reportData.length === 0 || loading}
               className="flex items-center px-4 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-all duration-200 disabled:opacity-50 shadow-sm"
             >
               <Printer className="h-4 w-4 mr-2" />
@@ -572,8 +772,9 @@ const Reports = () => {
                       className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
                     >
                       <option value="all">All Types</option>
-                      <option value="in">Stock In</option>
-                      <option value="out">Stock Out</option>
+                      <option value="incoming">Stock In</option>
+                      <option value="outgoing">Stock Out</option>
+                      <option value="adjustment">Adjustment</option>
                     </select>
                   </div>
                 )}
@@ -593,10 +794,10 @@ const Reports = () => {
 
                 <button
                   onClick={handleGenerateReport}
-                  disabled={isGenerating}
+                  disabled={isGenerating || loading}
                   className="w-full flex items-center justify-center px-4 py-2.5 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 disabled:opacity-50 transition-all duration-200"
                 >
-                  {isGenerating ? (
+                  {isGenerating || loading ? (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                       Applying Filters...
@@ -625,7 +826,7 @@ const Reports = () => {
                       {currentReport?.name}
                     </h2>
                     <p className="text-sm text-gray-600 mt-1">
-                      {filteredData.length} records found
+                      {reportData.length} records found
                       {dateRange.start && dateRange.end && ` from ${formatDate(dateRange.start)} to ${formatDate(dateRange.end)}`}
                     </p>
                   </div>
@@ -639,21 +840,21 @@ const Reports = () => {
               </div>
 
               {/* Report Stats */}
-              {filteredData.length > 0 && (
+              {reportData.length > 0 && !loading && (
                 <div className="bg-gradient-to-r from-indigo-50 to-blue-50 px-6 py-4 border-b border-gray-200">
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {selectedReport === 'inventory' && (
                       <>
                         <div className="text-center p-4 bg-white rounded-xl shadow-sm border border-gray-200">
-                          <div className="text-2xl font-bold text-indigo-600">{reportStats.totalItems}</div>
+                          <div className="text-2xl font-bold text-indigo-600">{stats.totalItems}</div>
                           <div className="text-sm text-gray-600">Total Products</div>
                         </div>
                         <div className="text-center p-4 bg-white rounded-xl shadow-sm border border-gray-200">
-                          <div className="text-2xl font-bold text-blue-600">{formatCurrency(reportStats.totalValue)}</div>
+                          <div className="text-2xl font-bold text-blue-600">{formatCurrency(stats.totalValue)}</div>
                           <div className="text-sm text-gray-600">Total Value</div>
                         </div>
                         <div className="text-center p-4 bg-white rounded-xl shadow-sm border border-gray-200">
-                          <div className="text-2xl font-bold text-amber-600">{reportStats.lowStockItems}</div>
+                          <div className="text-2xl font-bold text-amber-600">{stats.lowStockItems}</div>
                           <div className="text-sm text-gray-600">Low Stock Items</div>
                         </div>
                       </>
@@ -662,15 +863,15 @@ const Reports = () => {
                     {selectedReport === 'transactions' && (
                       <>
                         <div className="text-center p-4 bg-white rounded-xl shadow-sm border border-gray-200">
-                          <div className="text-2xl font-bold text-indigo-600">{reportStats.totalTransactions}</div>
+                          <div className="text-2xl font-bold text-indigo-600">{stats.totalTransactions}</div>
                           <div className="text-sm text-gray-600">Total Transactions</div>
                         </div>
                         <div className="text-center p-4 bg-white rounded-xl shadow-sm border border-gray-200">
-                          <div className="text-2xl font-bold text-green-600">{reportStats.stockIns}</div>
+                          <div className="text-2xl font-bold text-green-600">{stats.stockIns}</div>
                           <div className="text-sm text-gray-600">Stock Ins</div>
                         </div>
                         <div className="text-center p-4 bg-white rounded-xl shadow-sm border border-gray-200">
-                          <div className="text-2xl font-bold text-red-600">{reportStats.stockOuts}</div>
+                          <div className="text-2xl font-bold text-red-600">{stats.stockOuts}</div>
                           <div className="text-sm text-gray-600">Stock Outs</div>
                         </div>
                       </>
@@ -679,15 +880,15 @@ const Reports = () => {
                     {selectedReport === 'low-stock' && (
                       <>
                         <div className="text-center p-4 bg-white rounded-xl shadow-sm border border-gray-200">
-                          <div className="text-2xl font-bold text-red-600">{reportStats.criticalItems}</div>
+                          <div className="text-2xl font-bold text-red-600">{stats.criticalItems}</div>
                           <div className="text-sm text-gray-600">Critical Items</div>
                         </div>
                         <div className="text-center p-4 bg-white rounded-xl shadow-sm border border-gray-200">
-                          <div className="text-2xl font-bold text-amber-600">{reportStats.warningItems}</div>
+                          <div className="text-2xl font-bold text-amber-600">{stats.warningItems}</div>
                           <div className="text-sm text-gray-600">Warning Items</div>
                         </div>
                         <div className="text-center p-4 bg-white rounded-xl shadow-sm border border-gray-200">
-                          <div className="text-2xl font-bold text-blue-600">{formatCurrency(reportStats.totalValue)}</div>
+                          <div className="text-2xl font-bold text-blue-600">{formatCurrency(stats.totalValue)}</div>
                           <div className="text-sm text-gray-600">Total Value at Risk</div>
                         </div>
                       </>
@@ -696,16 +897,16 @@ const Reports = () => {
                     {selectedReport === 'sales' && (
                       <>
                         <div className="text-center p-4 bg-white rounded-xl shadow-sm border border-gray-200">
-                          <div className="text-2xl font-bold text-indigo-600">{reportStats.totalSales}</div>
+                          <div className="text-2xl font-bold text-indigo-600">{stats.totalSales}</div>
                           <div className="text-sm text-gray-600">Total Sales</div>
                         </div>
                         <div className="text-center p-4 bg-white rounded-xl shadow-sm border border-gray-200">
-                          <div className="text-2xl font-bold text-green-600">{formatCurrency(reportStats.totalRevenue)}</div>
+                          <div className="text-2xl font-bold text-green-600">{formatCurrency(stats.totalRevenue)}</div>
                           <div className="text-sm text-gray-600">Total Revenue</div>
                         </div>
                         <div className="text-center p-4 bg-white rounded-xl shadow-sm border border-gray-200">
-                          <div className="text-2xl font-bold text-blue-600">{formatCurrency(reportStats.averageSale)}</div>
-                          <div className="text-sm text-gray-600">Average Sale</div>
+                          <div className="text-2xl font-bold text-blue-600">{formatCurrency(stats.profit)}</div>
+                          <div className="text-sm text-gray-600">Profit</div>
                         </div>
                       </>
                     )}
@@ -714,7 +915,7 @@ const Reports = () => {
               )}
 
               <div className="p-6">
-                {filteredData.length === 0 ? (
+                {reportData.length === 0 && !loading && !error ? (
                   <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
                     <div className="mx-auto h-16 w-16 text-gray-400 mb-4">
                       <FileText className="h-16 w-16" />

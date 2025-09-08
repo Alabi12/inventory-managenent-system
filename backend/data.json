@@ -10,7 +10,7 @@
       "price": 2000.0,
       "description": "Bought from AEK electronics 2344",
       "status": "in_stock",
-      "last_updated": "2025-09-05T20:32:14.821257",
+      "last_updated": "2025-09-05T23:35:49.851368",
       "image": "/uploads/product_COM001_eea59a53948b4d60b4f047072fafdf51.jpg"
     },
     {
@@ -47,6 +47,40 @@
       "password": "scrypt:32768:8:1$KN2fz7wiJcai1ck3$94e09d7de04ac260d28f0ed181d0787fe8ebd716d71d98675526ac43b58cb0a3cb931d106a519a580538c6e22e0c5ca56149dabdb149592cd071dfa3c374980d",
       "name": "Demo User",
       "role": "admin"
+    }
+  ],
+  "transactions": [
+    {
+      "id": "TXN202509051524",
+      "product_id": 1,
+      "product_name": "Computer",
+      "product_sku": "COM001",
+      "type": "outgoing",
+      "quantity": 30,
+      "previous_stock": 30,
+      "new_stock": 0,
+      "amount": 60000.0,
+      "notes": "",
+      "status": "completed",
+      "date": "2025-09-05T22:14:35.294920",
+      "created_by": "Demo User",
+      "reference": "REF-001"
+    },
+    {
+      "id": "TXN202509058574",
+      "product_id": 1,
+      "product_name": "Computer",
+      "product_sku": "COM001",
+      "type": "incoming",
+      "quantity": 30,
+      "previous_stock": 0,
+      "new_stock": 30,
+      "amount": 60000.0,
+      "notes": "",
+      "status": "completed",
+      "date": "2025-09-05T23:35:49.851331",
+      "created_by": "Demo User",
+      "reference": "REF-002"
     }
   ]
 }

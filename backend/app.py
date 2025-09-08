@@ -13,6 +13,7 @@ import base64
 import openpyxl
 from io import BytesIO
 import pandas as pd
+import random
 
 app = Flask(__name__)
 CORS(app)
@@ -34,10 +35,15 @@ def load_data():
     try:
         if os.path.exists(app.config['DATA_FILE']):
             with open(app.config['DATA_FILE'], 'r') as f:
-                return json.load(f)
+                data = json.load(f)
+                # Ensure transactions array exists
+                if 'transactions' not in data:
+                    data['transactions'] = []
+                return data
         else:
             return {
                 'products': [],
+                'transactions': [],  # Add transactions array
                 'users': [
                     {
                         'id': 1,
@@ -50,7 +56,7 @@ def load_data():
             }
     except Exception as e:
         print(f"Error loading data: {e}")
-        return {'products': [], 'users': []}
+        return {'products': [], 'transactions': [], 'users': []}
 
 # Save data to file
 def save_data(data):
@@ -63,7 +69,21 @@ def save_data(data):
 # Initialize data
 data = load_data()
 products = data.get('products', [])
+transactions = data.get('transactions', [])
 users = data.get('users', [])
+
+# Make sure the save functions update the global data structure
+def save_products():
+    """Save products to persistent storage"""
+    global data
+    data['products'] = products
+    save_data(data)
+
+def save_transactions():
+    """Save transactions to persistent storage"""
+    global data
+    data['transactions'] = transactions
+    save_data(data)
 
 # Helper functions
 def find_user_by_email(email):
@@ -93,7 +113,6 @@ def save_image(image_data, filename):
     except Exception as e:
         print(f"Error saving image: {e}")
         return None
-        
 
 def determine_status(quantity, min_stock_level):
     """Determine product status based on quantity and min stock level"""
@@ -103,12 +122,6 @@ def determine_status(quantity, min_stock_level):
         return 'low_stock'
     else:
         return 'in_stock'
-
-def save_products():
-    """Save products to persistent storage"""
-    global data
-    data['products'] = products
-    save_data(data)
 
 # JWT error handlers
 @jwt.unauthorized_loader
@@ -560,7 +573,7 @@ def import_products():
     except Exception as e:
         return jsonify({'message': 'Failed to import products', 'error': str(e)}), 500
 
-# Get transactions
+# Transaction routes
 @app.route('/transactions', methods=['GET'])
 @jwt_required()
 def get_transactions():
@@ -570,18 +583,178 @@ def get_transactions():
         if not user:
             return jsonify({'message': 'User not found'}), 404
         
-        # Return empty array for now
-        return jsonify([]), 200
+        # Get query parameters
+        type_filter = request.args.get('type')
+        status_filter = request.args.get('status')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        sort_by = request.args.get('sortBy', 'date')
+        sort_order = request.args.get('sortOrder', 'desc')
+        limit = int(request.args.get('limit', 0))
+        
+        # Filter transactions
+        filtered_transactions = transactions.copy()
+        
+        if type_filter and type_filter != 'all':
+            filtered_transactions = [t for t in filtered_transactions if t['type'] == type_filter]
+        
+        if status_filter and status_filter != 'all':
+            filtered_transactions = [t for t in filtered_transactions if t['status'] == status_filter]
+        
+        if start_date:
+            filtered_transactions = [t for t in filtered_transactions if t['date'] >= start_date]
+        
+        if end_date:
+            filtered_transactions = [t for t in filtered_transactions if t['date'] <= end_date]
+        
+        # Sort transactions
+        reverse_order = sort_order.lower() == 'desc'
+        filtered_transactions.sort(key=lambda x: x.get(sort_by, ''), reverse=reverse_order)
+        
+        # Apply limit if specified
+        if limit > 0:
+            filtered_transactions = filtered_transactions[:limit]
+        
+        return jsonify(filtered_transactions), 200
     except Exception as e:
         return jsonify({'message': 'Failed to fetch transactions', 'error': str(e)}), 500
+
+@app.route('/transactions', methods=['POST'])
+@jwt_required()
+def create_transaction():
+    try:
+        print("DEBUG: Received transaction creation request")
+        
+        user_id = get_jwt_identity()
+        user = next((u for u in users if str(u['id']) == user_id), None)
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+        
+        data = request.get_json()
+        print(f"DEBUG: Request data: {data}")
+        
+        # Validate required fields
+        required_fields = ['type', 'product_id', 'quantity']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'message': f'Missing required field: {field}'}), 400
+        
+        # Convert product_id to integer and validate
+        try:
+            product_id = int(data['product_id'])
+        except (ValueError, TypeError):
+            return jsonify({'message': 'Invalid product ID format'}), 400
+        
+        # Check if products exist
+        if not products:
+            return jsonify({'message': 'No products available. Please create products first.'}), 400
+        
+        print(f"DEBUG: Looking for product ID: {product_id}")
+        print(f"DEBUG: Available product IDs: {[p['id'] for p in products]}")
+        
+        # Find product
+        product = next((p for p in products if p['id'] == product_id), None)
+        if not product:
+            return jsonify({'message': 'Product not found'}), 404
+        
+        print(f"DEBUG: Found product: {product['name']}")
+        
+        # Generate transaction ID
+        transaction_id = f"TXN{datetime.now().strftime('%Y%m%d')}{random.randint(1000, 9999)}"
+        
+        # Calculate amount if not provided
+        amount = data.get('amount')
+        if not amount and data['type'] in ['incoming', 'outgoing']:
+            amount = float(data['quantity']) * float(product['price'])
+        
+        # Calculate stock changes
+        quantity_change = int(data['quantity'])
+        previous_stock = product['quantity']
+        
+        if data['type'] == 'incoming':
+            new_stock = previous_stock + quantity_change
+        elif data['type'] == 'outgoing':
+            new_stock = max(0, previous_stock - quantity_change)
+        elif data['type'] == 'adjustment':
+            new_stock = quantity_change
+        
+        new_transaction = {
+            'id': transaction_id,
+            'product_id': product_id,
+            'product_name': product['name'],
+            'product_sku': product.get('sku', ''),
+            'type': data['type'],
+            'quantity': quantity_change,
+            'previous_stock': previous_stock,
+            'new_stock': new_stock,
+            'amount': float(amount) if amount else 0.0,
+            'notes': data.get('notes', ''),
+            'status': 'completed',
+            'date': datetime.now().isoformat(),
+            'created_by': user['name'],
+            'reference': data.get('reference', '')
+        }
+        
+        # Update product stock
+        if data['type'] == 'incoming':
+            product['quantity'] += quantity_change
+        elif data['type'] == 'outgoing':
+            product['quantity'] = max(0, product['quantity'] - quantity_change)
+        elif data['type'] == 'adjustment':
+            product['quantity'] = quantity_change
+        
+        # Update product status
+        product['status'] = determine_status(product['quantity'], product['min_stock_level'])
+        product['last_updated'] = datetime.now().isoformat()
+        
+        # Add transaction and save
+        transactions.append(new_transaction)
+        save_products()
+        save_transactions()
+        
+        return jsonify(new_transaction), 201
+        
+    except Exception as e:
+        print(f"ERROR in create_transaction: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'message': 'Failed to create transaction', 'error': str(e)}), 500
+    
+@app.route('/transactions/stats', methods=['GET'])
+@jwt_required()
+def get_transaction_stats():
+    try:
+        user_id = get_jwt_identity()
+        user = next((u for u in users if str(u['id']) == user_id), None)
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+        
+        # Calculate stats for last 30 days
+        thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
+        recent_transactions = [t for t in transactions if t['date'] >= thirty_days_ago]
+        
+        stats = {
+            'total_transactions': len(recent_transactions),
+            'total_incoming': sum(t['quantity'] for t in recent_transactions if t['type'] == 'incoming'),
+            'total_outgoing': sum(t['quantity'] for t in recent_transactions if t['type'] == 'outgoing'),
+            'total_revenue': sum(t['amount'] for t in recent_transactions if t['type'] == 'outgoing'),
+            'total_cost': sum(t['amount'] for t in recent_transactions if t['type'] == 'incoming'),
+            'profit': sum(t['amount'] for t in recent_transactions if t['type'] == 'outgoing') - 
+                     sum(t['amount'] for t in recent_transactions if t['type'] == 'incoming')
+        }
+        
+        return jsonify(stats), 200
+    except Exception as e:
+        return jsonify({'message': 'Failed to fetch transaction stats', 'error': str(e)}), 500
 
 # Reset database (for development only)
 @app.route('/admin/reset', methods=['POST'])
 def reset_database():
     try:
-        global products
+        global products, transactions
         products = []
-        save_products()
+        transactions = []
+        save_data({'products': products, 'transactions': transactions, 'users': users})
         return jsonify({'message': 'Database reset successfully'}), 200
     except Exception as e:
         return jsonify({'message': 'Failed to reset database', 'error': str(e)}), 500
@@ -589,6 +762,7 @@ def reset_database():
 if __name__ == '__main__':
     print("Starting Flask server...")
     print(f"Loaded {len(products)} products from storage")
+    print(f"Loaded {len(transactions)} transactions from storage")
     print("Available endpoints:")
     print("  GET  /health")
     print("  POST /auth/login")
@@ -601,5 +775,7 @@ if __name__ == '__main__':
     print("  POST /products/import (requires JWT) - file upload")
     print("  GET  /uploads/<filename> (serves uploaded images)")
     print("  GET  /transactions (requires JWT)")
+    print("  POST /transactions (requires JWT)")
+    print("  GET  /transactions/stats (requires JWT)")
     print("  POST /admin/reset (development only - resets database)")
     app.run(debug=True, host='0.0.0.0', port=5000)
