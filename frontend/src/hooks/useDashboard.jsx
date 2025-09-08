@@ -7,19 +7,24 @@ export const useDashboard = () => {
     lowStockItems: 0,
     totalTransactions: 0,
     recentTransactions: [],
+    loading: true,
+    error: null
   });
-  const [loading, setLoading] = useState(true);
 
   const fetchDashboardData = async () => {
     try {
-      setLoading(true);
-      const [productsRes, transactionsRes] = await Promise.all([
-        productsAPI.getAll(),
-        transactionsAPI.getAll(),
+      setStats(prev => ({ ...prev, loading: true, error: null }));
+      
+      // Use the correct API methods that actually exist
+      const [productsRes, transactionsRes, statsRes] = await Promise.all([
+        productsAPI.getProducts(), // Changed from getAll() to getProducts()
+        transactionsAPI.getTransactions(), // Changed from getAll() to getTransactions()
+        transactionsAPI.getTransactionStats() // Added to get transaction statistics
       ]);
 
       const products = productsRes.data;
       const transactions = transactionsRes.data;
+      const transactionStats = statsRes.data;
 
       const totalProducts = products.length;
       const lowStockItems = products.filter(p => p.quantity <= p.min_stock_level).length;
@@ -31,11 +36,17 @@ export const useDashboard = () => {
         lowStockItems,
         totalTransactions,
         recentTransactions,
+        transactionStats, // Include the transaction statistics
+        loading: false,
+        error: null
       });
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
-    } finally {
-      setLoading(false);
+      setStats(prev => ({
+        ...prev,
+        loading: false,
+        error: error.response?.data?.message || 'Failed to fetch dashboard data'
+      }));
     }
   };
 
@@ -45,7 +56,8 @@ export const useDashboard = () => {
 
   return {
     stats,
-    loading,
+    loading: stats.loading,
+    error: stats.error,
     refetch: fetchDashboardData,
   };
 };

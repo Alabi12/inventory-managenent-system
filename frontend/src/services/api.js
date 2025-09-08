@@ -76,19 +76,65 @@ export const inventoryAPI = {
   }
 };
 
-// Add productsAPI for backward compatibility
+// Add productsAPI for backward compatibility - ADD THIS SECTION
 export const productsAPI = {
-  get: (endpoint = '') => api.get(`/products${endpoint}`),
-  post: (data) => api.post('/products', data),
-  put: (id, data) => api.put(`/products/${id}`, data),
-  delete: (id) => api.delete(`/products/${id}`),
+  // Get products with optional filtering and sorting
+  getProducts: (params = {}) => {
+    const queryString = buildQueryString(params);
+    return api.get(`/products${queryString}`);
+  },
+  
+  // Get single product
+  getProduct: (id) => api.get(`/products/${id}`),
+  
+  // Create product
+  createProduct: (data) => api.post('/products', data),
+  
+  // Update product
+  updateProduct: (id, data) => api.put(`/products/${id}`, data),
+  
+  // Delete product
+  deleteProduct: (id) => api.delete(`/products/${id}`),
+  
+  // Export products
+  exportProducts: (format = 'csv') => {
+    return api.get(`/products/export?format=${format}`, {
+      responseType: 'blob'
+    });
+  },
+  
+  // Import products
+  importProducts: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/products/import', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      }
+    });
+  }
 };
 
+// Transactions API
 export const transactionsAPI = {
-  get: (endpoint = '') => api.get(`/transactions${endpoint}`),
-  post: (data) => api.post('/transactions', data),
-  put: (id, data) => api.put(`/transactions/${id}`, data),
-  delete: (id) => api.delete(`/transactions/${id}`),
+  // Get transactions with optional filtering
+  getTransactions: (params = {}) => {
+    const queryString = buildQueryString(params);
+    return api.get(`/transactions${queryString}`);
+  },
+  
+  // Create new transaction
+  createTransaction: (data) => api.post('/transactions', data),
+  
+  // Get transaction statistics
+  getTransactionStats: () => api.get('/transactions/stats'),
+  
+  // Export transactions
+  exportTransactions: (format = 'csv') => {
+    return api.get(`/transactions/export?format=${format}`, {
+      responseType: 'blob'
+    });
+  }
 };
 
 export default api;
